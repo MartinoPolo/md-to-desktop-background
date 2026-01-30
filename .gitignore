@@ -32,8 +32,9 @@ env/
 *.swp
 *.swo
 
-# Output images (keep .gitkeep)
+# Output images (keep .gitkeep and samples)
 output/*.png
+!output/samples/*.png
 
 # Environment
 .env

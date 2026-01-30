@@ -31,6 +31,15 @@ def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
         "Segoe UI Bold": "segoeuib.ttf",
         "Arial": "arial.ttf",
         "Courier New": "cour.ttf",
+        "Cascadia Code": "CascadiaCode.ttf",
+        "Cascadia Mono": "CascadiaMono.ttf",
+        "Fira Code": "FiraCode-Regular.ttf",
+        "JetBrains Mono": "JetBrainsMono-Regular.ttf",
+        "Source Code Pro": "SourceCodePro-Regular.ttf",
+        "Roboto Mono": "RobotoMono-Regular.ttf",
+        "Ubuntu Mono": "UbuntuMono-R.ttf",
+        "Hack": "Hack-Regular.ttf",
+        "Inconsolata": "Inconsolata-Regular.ttf",
     }
 
     if font_name in font_mappings:
@@ -53,16 +62,19 @@ def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
 class Renderer:
     """Renders parsed content to an image."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, font_size_override: Optional[int] = None):
         self.config = config
         self.width = config.display.width
         self.height = config.display.height
         self.theme = config.theme
 
-        # Load fonts
-        self.header_font = load_font(config.fonts.header_font, config.fonts.shortcut_size + 4)
-        self.shortcut_font = load_font(config.fonts.shortcut_font, config.fonts.shortcut_size)
-        self.description_font = load_font(config.fonts.description_font, config.fonts.description_size)
+        # Use override or config font size
+        self.shortcut_size = font_size_override or config.fonts.shortcut_size
+        self.description_size = int(self.shortcut_size * 0.9)  # Description slightly smaller
+        self.header_size = self.shortcut_size + 4
+
+        # Load fonts with current sizes
+        self._load_fonts()
 
         # Calculate layout dimensions
         self.left_margin = int(self.width * config.display.left_margin)
@@ -74,6 +86,12 @@ class Renderer:
         self.shortcut_column_width = int(self.content_width * 0.35)
         self.description_column_width = int(self.content_width * 0.65) - config.layout.column_gap
 
+    def _load_fonts(self):
+        """Load fonts with current sizes."""
+        self.header_font = load_font(self.config.fonts.header_font, self.header_size)
+        self.shortcut_font = load_font(self.config.fonts.shortcut_font, self.shortcut_size)
+        self.description_font = load_font(self.config.fonts.description_font, self.description_size)
+
     def render(self, content: ParsedContent) -> Image.Image:
         """Render parsed content to an image."""
         # Create canvas
@@ -82,8 +100,8 @@ class Renderer:
         draw = ImageDraw.Draw(image)
 
         # Calculate line height
-        line_height = int(self.config.fonts.shortcut_size * self.config.layout.line_height)
-        header_height = int((self.config.fonts.shortcut_size + 4) * self.config.layout.line_height)
+        line_height = int(self.shortcut_size * self.config.layout.line_height)
+        header_height = int(self.header_size * self.config.layout.line_height)
 
         # Available height for content
         available_height = self.height - self.top_margin - self.bottom_margin
@@ -271,7 +289,69 @@ class Renderer:
         return text[:low] + ellipsis if low < len(text) else text
 
 
-def render_to_image(content: ParsedContent, config: Config) -> Image.Image:
-    """Convenience function to render content to an image."""
-    renderer = Renderer(config)
+def find_optimal_font_size(
+    content: ParsedContent,
+    config: Config,
+    min_size: int = 14,
+    max_size: int = 40,
+) -> int:
+    """Find the optimal font size to fill available space.
+
+    Uses binary search to find the largest font size where content
+    still fits within the available height (with configured columns).
+    """
+    available_height = config.display.height - 100  # top + bottom margin
+
+    def content_fits(font_size: int) -> bool:
+        """Check if content fits with given font size."""
+        line_height = int(font_size * config.layout.line_height)
+        header_height = int((font_size + 4) * config.layout.line_height)
+
+        total_height = 0
+        for item in content.items:
+            if isinstance(item, HeaderItem):
+                total_height += header_height + config.layout.section_gap
+            else:
+                total_height += line_height
+
+        # Account for multiple columns
+        num_columns = config.layout.overflow_columns
+        height_per_column = total_height / num_columns
+
+        return height_per_column <= available_height
+
+    # Binary search for optimal size
+    low, high = min_size, max_size
+    optimal = min_size
+
+    while low <= high:
+        mid = (low + high) // 2
+        if content_fits(mid):
+            optimal = mid
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    return optimal
+
+
+def render_to_image(
+    content: ParsedContent,
+    config: Config,
+    auto_scale: bool = True,
+) -> Image.Image:
+    """Render content to an image.
+
+    Args:
+        content: Parsed markdown content
+        config: Configuration object
+        auto_scale: If True, automatically scale font to fill available space
+    """
+    if auto_scale:
+        optimal_size = find_optimal_font_size(content, config)
+        print(f"Auto-scaled font size: {optimal_size}px")
+        renderer = Renderer(config, font_size_override=optimal_size)
+    else:
+        renderer = Renderer(config)
+
     return renderer.render(content)
