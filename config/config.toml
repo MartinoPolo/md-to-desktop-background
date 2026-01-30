@@ -1,0 +1,28 @@
+[source]
+markdown_file = "C:/Users/snapy/OneDrive/Obsidian/ObsidianMP/Programming/Shortcuts.md"
+
+[output]
+directory = "./output"
+filename = "shortcuts-{date}.png"
+
+[display]
+resolution = "3200x2000"
+theme = "dark"
+left_margin = 0.33
+
+[layout]
+column_gap = 40
+line_height = 1.5
+section_gap = 30
+overflow_columns = 2
+
+[fonts]
+shortcut_font = "Consolas"
+shortcut_size = 22
+description_font = "Segoe UI"
+description_size = 20
+header_font = "Segoe UI"
+
+[filter]
+skip_sections = ["Nauč se", "Nezpracováno"]
+include_partial = true

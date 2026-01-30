@@ -1,0 +1,277 @@
+"""Image rendering with Pillow."""
+from __future__ import annotations
+
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+from typing import List, Optional, Tuple
+
+from .config import Config, ThemeColors
+from .parser import ParsedContent, HeaderItem, ShortcutItem
+
+
+def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
+    """Convert hex color to RGB tuple."""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+
+def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
+    """Load a font by name, with fallback to default."""
+    # Common Windows font paths
+    font_paths = [
+        f"C:/Windows/Fonts/{font_name}.ttf",
+        f"C:/Windows/Fonts/{font_name.lower()}.ttf",
+        f"C:/Windows/Fonts/{font_name.replace(' ', '')}.ttf",
+    ]
+
+    # Add specific mappings for common fonts
+    font_mappings = {
+        "Consolas": "consola.ttf",
+        "Segoe UI": "segoeui.ttf",
+        "Segoe UI Bold": "segoeuib.ttf",
+        "Arial": "arial.ttf",
+        "Courier New": "cour.ttf",
+    }
+
+    if font_name in font_mappings:
+        font_paths.insert(0, f"C:/Windows/Fonts/{font_mappings[font_name]}")
+
+    for path in font_paths:
+        if Path(path).exists():
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+
+    # Fallback to default
+    try:
+        return ImageFont.truetype("arial.ttf", size)
+    except Exception:
+        return ImageFont.load_default()
+
+
+class Renderer:
+    """Renders parsed content to an image."""
+
+    def __init__(self, config: Config):
+        self.config = config
+        self.width = config.display.width
+        self.height = config.display.height
+        self.theme = config.theme
+
+        # Load fonts
+        self.header_font = load_font(config.fonts.header_font, config.fonts.shortcut_size + 4)
+        self.shortcut_font = load_font(config.fonts.shortcut_font, config.fonts.shortcut_size)
+        self.description_font = load_font(config.fonts.description_font, config.fonts.description_size)
+
+        # Calculate layout dimensions
+        self.left_margin = int(self.width * config.display.left_margin)
+        self.content_width = self.width - self.left_margin - 50  # 50px right margin
+        self.top_margin = 50
+        self.bottom_margin = 50
+
+        # Calculate column widths for shortcut/description layout
+        self.shortcut_column_width = int(self.content_width * 0.35)
+        self.description_column_width = int(self.content_width * 0.65) - config.layout.column_gap
+
+    def render(self, content: ParsedContent) -> Image.Image:
+        """Render parsed content to an image."""
+        # Create canvas
+        bg_color = hex_to_rgb(self.theme.background)
+        image = Image.new('RGB', (self.width, self.height), bg_color)
+        draw = ImageDraw.Draw(image)
+
+        # Calculate line height
+        line_height = int(self.config.fonts.shortcut_size * self.config.layout.line_height)
+        header_height = int((self.config.fonts.shortcut_size + 4) * self.config.layout.line_height)
+
+        # Available height for content
+        available_height = self.height - self.top_margin - self.bottom_margin
+
+        # First pass: calculate total height needed
+        total_height = self._calculate_content_height(content, line_height, header_height)
+
+        # Determine if we need multiple columns
+        num_columns = 1
+        if total_height > available_height:
+            num_columns = min(self.config.layout.overflow_columns, 3)
+
+        # Calculate column layout
+        column_width = self.content_width // num_columns
+
+        # Split content into columns if needed
+        if num_columns > 1:
+            columns = self._split_into_columns(content, num_columns, available_height, line_height, header_height)
+        else:
+            columns = [content.items]
+
+        # Render each column
+        for col_idx, column_items in enumerate(columns):
+            col_x = self.left_margin + col_idx * column_width
+            self._render_column(draw, column_items, col_x, column_width, line_height, header_height)
+
+        return image
+
+    def _calculate_content_height(
+        self,
+        content: ParsedContent,
+        line_height: int,
+        header_height: int,
+    ) -> int:
+        """Calculate total height needed for content."""
+        total = 0
+        for item in content.items:
+            if isinstance(item, HeaderItem):
+                total += header_height + self.config.layout.section_gap
+            else:
+                total += line_height
+        return total
+
+    def _split_into_columns(
+        self,
+        content: ParsedContent,
+        num_columns: int,
+        available_height: int,
+        line_height: int,
+        header_height: int,
+    ) -> List[List]:
+        """Split content into roughly equal columns."""
+        total_height = self._calculate_content_height(content, line_height, header_height)
+        target_height = total_height // num_columns
+
+        columns = []
+        current_column = []
+        current_height = 0
+
+        for item in content.items:
+            if isinstance(item, HeaderItem):
+                item_height = header_height + self.config.layout.section_gap
+            else:
+                item_height = line_height
+
+            # Check if adding this item would exceed target (unless column is empty)
+            if current_height + item_height > target_height and current_column and len(columns) < num_columns - 1:
+                # Try not to split right after a header
+                if isinstance(item, ShortcutItem) and current_column and isinstance(current_column[-1], HeaderItem):
+                    # Move header to next column
+                    header = current_column.pop()
+                    columns.append(current_column)
+                    current_column = [header]
+                    current_height = header_height + self.config.layout.section_gap
+                else:
+                    columns.append(current_column)
+                    current_column = []
+                    current_height = 0
+
+            current_column.append(item)
+            current_height += item_height
+
+        if current_column:
+            columns.append(current_column)
+
+        return columns
+
+    def _render_column(
+        self,
+        draw: ImageDraw.Draw,
+        items: list,
+        x_start: int,
+        column_width: int,
+        line_height: int,
+        header_height: int,
+    ):
+        """Render a single column of items."""
+        y = self.top_margin
+
+        # Recalculate shortcut/description widths for this column
+        shortcut_width = int(column_width * 0.35)
+        desc_x = x_start + shortcut_width + self.config.layout.column_gap
+
+        for item in items:
+            if isinstance(item, HeaderItem):
+                # Add section gap before header (except at top)
+                if y > self.top_margin:
+                    y += self.config.layout.section_gap // 2
+
+                # Get header color based on level
+                color = self._get_header_color(item.level)
+
+                draw.text(
+                    (x_start, y),
+                    item.text,
+                    font=self.header_font,
+                    fill=color,
+                )
+                y += header_height
+                y += self.config.layout.section_gap // 2
+
+            elif isinstance(item, ShortcutItem):
+                # Draw shortcut
+                shortcut_color = hex_to_rgb(self.theme.shortcut)
+                draw.text(
+                    (x_start, y),
+                    item.shortcut,
+                    font=self.shortcut_font,
+                    fill=shortcut_color,
+                )
+
+                # Draw description
+                if item.description:
+                    desc_color = hex_to_rgb(self.theme.description)
+                    # Truncate description if too long
+                    desc = self._truncate_text(item.description, column_width - shortcut_width - self.config.layout.column_gap)
+                    draw.text(
+                        (desc_x, y),
+                        desc,
+                        font=self.description_font,
+                        fill=desc_color,
+                    )
+
+                y += line_height
+
+    def _get_header_color(self, level: int) -> Tuple[int, int, int]:
+        """Get color for header level."""
+        color_map = {
+            2: self.theme.header_h2,
+            3: self.theme.header_h3,
+            4: self.theme.header_h4,
+            5: self.theme.header_h5,
+        }
+        hex_color = color_map.get(level, self.theme.header_h2)
+        return hex_to_rgb(hex_color)
+
+    def _truncate_text(self, text: str, max_width: int) -> str:
+        """Truncate text to fit within max_width pixels."""
+        if not text:
+            return text
+
+        # Create a temporary image for text measurement
+        temp_img = Image.new('RGB', (1, 1))
+        temp_draw = ImageDraw.Draw(temp_img)
+
+        bbox = temp_draw.textbbox((0, 0), text, font=self.description_font)
+        text_width = bbox[2] - bbox[0]
+
+        if text_width <= max_width:
+            return text
+
+        # Binary search for the right length
+        ellipsis = "..."
+        low, high = 0, len(text)
+
+        while low < high:
+            mid = (low + high + 1) // 2
+            truncated = text[:mid] + ellipsis
+            bbox = temp_draw.textbbox((0, 0), truncated, font=self.description_font)
+            if bbox[2] - bbox[0] <= max_width:
+                low = mid
+            else:
+                high = mid - 1
+
+        return text[:low] + ellipsis if low < len(text) else text
+
+
+def render_to_image(content: ParsedContent, config: Config) -> Image.Image:
+    """Convenience function to render content to an image."""
+    renderer = Renderer(config)
+    return renderer.render(content)
