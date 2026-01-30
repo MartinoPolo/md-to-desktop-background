@@ -1,5 +1,5 @@
 [source]
-markdown_file = "C:/Users/snapy/OneDrive/Obsidian/ObsidianMP/Programming/Shortcuts.md"
+markdown_file = "./input/Shortcuts.md"
 
 [output]
 directory = "./output"
