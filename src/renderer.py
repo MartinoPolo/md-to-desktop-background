@@ -81,8 +81,8 @@ class Renderer:
 
         # Fixed 3-column grid
         self.edge_padding = 50
-        self.top_margin = 50
-        self.bottom_margin = 50
+        self.top_margin = config.layout.top_margin
+        self.bottom_margin = config.layout.bottom_margin
         self.column_width = (self.width - 2 * self.edge_padding) // 3
         self.column_positions = {
             "left": self.edge_padding,
@@ -285,7 +285,7 @@ def find_optimal_font_size(
     Uses binary search to find the largest font size where content
     still fits within the available height (with configured columns).
     """
-    available_height = config.display.height - 100  # top + bottom margin
+    available_height = config.display.height - config.layout.top_margin - config.layout.bottom_margin
 
     def content_fits(font_size: int) -> bool:
         """Check if content fits with given font size."""

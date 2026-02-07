@@ -50,6 +50,8 @@ class LayoutConfig:
     line_height: float = 1.5
     section_gap: int = 30
     active_columns: List[str] = field(default_factory=lambda: ["middle", "right"])
+    top_margin: int = 50
+    bottom_margin: int = 150
 
 
 @dataclass

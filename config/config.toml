@@ -20,6 +20,7 @@ column_gap = 40
 line_height = 1.5
 section_gap = 30
 active_columns = ["middle", "right"]
+bottom_margin = 150
 
 [fonts]
 shortcut_font = "Consolas"
