@@ -34,6 +34,7 @@ class OutputConfig:
 class DisplayConfig:
     resolution: str = "3200x2000"
     theme: str = "dark"
+    wallpaper_style: str = "fit"
 
     @property
     def width(self) -> int:

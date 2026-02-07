@@ -14,13 +14,15 @@ filename = "shortcuts-{date}.png"
 [display]
 resolution = "3200x2000"
 theme = "dark"
+wallpaper_style = "fit"
 
 [layout]
 column_gap = 40
 line_height = 1.5
 section_gap = 30
 active_columns = ["middle", "right"]
-bottom_margin = 150
+top_margin = 75
+bottom_margin = 120
 
 [fonts]
 shortcut_font = "Consolas"
@@ -31,4 +33,4 @@ header_font = "Segoe UI"
 
 [filter]
 skip_sections = ["Nauč se", "Nezpracováno"]
-include_partial = true
+include_partial = false

@@ -111,7 +111,22 @@ def parse_markdown(
             if shortcut:
                 items.append(ShortcutItem(shortcut=shortcut, description=description))
 
-    return ParsedContent(items=items)
+    # Remove headers with no shortcuts following them
+    filtered = []
+    for i, item in enumerate(items):
+        if isinstance(item, HeaderItem):
+            has_shortcuts = False
+            for j in range(i + 1, len(items)):
+                if isinstance(items[j], HeaderItem):
+                    break
+                if isinstance(items[j], ShortcutItem):
+                    has_shortcuts = True
+                    break
+            if not has_shortcuts:
+                continue
+        filtered.append(item)
+
+    return ParsedContent(items=filtered)
 
 
 def _clean_header_text(text: str) -> str:

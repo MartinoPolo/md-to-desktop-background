@@ -120,8 +120,8 @@ def main():
         if args.preview:
             print("Preview mode - wallpaper not changed")
         else:
-            print("Setting wallpaper style to 'fill'...")
-            set_wallpaper_style("fill")
+            print(f"Setting wallpaper style to '{config.display.wallpaper_style}'...")
+            set_wallpaper_style(config.display.wallpaper_style)
 
             print("Setting wallpaper...")
             if set_wallpaper(output_path):
