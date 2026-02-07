@@ -13,8 +13,15 @@ except ImportError:
 
 
 @dataclass
+class SourceItem:
+    path: str = ""
+    format: str = "markdown"
+    title: str = ""
+
+
+@dataclass
 class SourceConfig:
-    markdown_file: str = ""
+    items: List[SourceItem] = field(default_factory=list)
 
 
 @dataclass
@@ -95,8 +102,11 @@ def load_config(config_dir: Optional[Path] = None) -> Config:
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
 
-    # Load main config sections
-    source = SourceConfig(**data.get("source", {}))
+    # Load sources list
+    sources_data = data.get("sources", [])
+    source_items = [SourceItem(**s) for s in sources_data]
+    source = SourceConfig(items=source_items)
+
     output = OutputConfig(**data.get("output", {}))
     display = DisplayConfig(**data.get("display", {}))
     layout = LayoutConfig(**data.get("layout", {}))

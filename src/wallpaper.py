@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ctypes
+import os
+import shutil
 from pathlib import Path
 from typing import Union
 
@@ -37,7 +39,73 @@ def set_wallpaper(image_path: Union[str, Path]) -> bool:
         SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
     )
 
+    if result:
+        _integrate_with_theme(image_path)
+
     return bool(result)
+
+
+def _integrate_with_theme(image_path: Path) -> None:
+    """Update Windows theme file and cache so wallpaper persists across theme reapplication.
+
+    Without this, Windows 11 reverts to the theme's wallpaper (often blank/black)
+    on login, sync, or periodic theme refresh.
+    """
+    import winreg
+
+    # 1. Overwrite TranscodedWallpaper cache
+    try:
+        transcoded_path = (
+            Path(os.environ["APPDATA"])
+            / "Microsoft" / "Windows" / "Themes" / "TranscodedWallpaper"
+        )
+        shutil.copy2(str(image_path), str(transcoded_path))
+    except Exception:
+        pass  # Non-critical; wallpaper still works via API
+
+    # 2. Update active .theme file's Wallpaper= line
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes",
+        )
+        theme_path = Path(winreg.QueryValueEx(key, "CurrentTheme")[0])
+        winreg.CloseKey(key)
+    except Exception:
+        return
+
+    if not theme_path.exists():
+        return
+
+    absolute_path = str(image_path.resolve())
+    lines = theme_path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    in_desktop_section = False
+    wallpaper_replaced = False
+    new_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("["):
+            in_desktop_section = stripped.lower() == r"[control panel\desktop]"
+
+        if (
+            in_desktop_section
+            and not wallpaper_replaced
+            and stripped.lower().startswith("wallpaper=")
+            and not stripped.lower().startswith("wallpaper1")
+            and not stripped.lower().startswith("wallpaper2")
+        ):
+            line = f"Wallpaper={absolute_path}"
+            wallpaper_replaced = True
+
+        new_lines.append(line)
+
+    try:
+        theme_path.write_text("\r\n".join(new_lines), encoding="utf-8")
+    except Exception:
+        pass  # Non-critical; wallpaper still works via API
 
 
 def set_wallpaper_style(style: str = "fill") -> bool:

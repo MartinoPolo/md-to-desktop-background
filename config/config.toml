@@ -1,5 +1,11 @@
-[source]
-markdown_file = "./input/Shortcuts.md"
+[[sources]]
+path = "C:/Users/snapy/OneDrive/Obsidian/ObsidianMP/Programming/Shortcuts.md"
+format = "markdown"
+
+[[sources]]
+path = "C:/Users/snapy/.bashrc"
+format = "bashrc"
+title = "Shell Aliases"
 
 [output]
 directory = "./output"
