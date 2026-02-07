@@ -78,7 +78,18 @@ def main():
 
             all_items.extend(content.items)
 
-        content = ParsedContent(items=all_items)
+        # Drop headers with no shortcuts beneath them
+        filtered_items = []
+        pending_headers = []
+        for item in all_items:
+            if isinstance(item, HeaderItem):
+                pending_headers.append(item)
+            else:
+                filtered_items.extend(pending_headers)
+                pending_headers.clear()
+                filtered_items.append(item)
+
+        content = ParsedContent(items=filtered_items)
 
         # Count items
         headers = sum(1 for item in content.items if isinstance(item, HeaderItem))
