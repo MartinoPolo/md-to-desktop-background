@@ -40,6 +40,9 @@ def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
         "Ubuntu Mono": "UbuntuMono-R.ttf",
         "Hack": "Hack-Regular.ttf",
         "Inconsolata": "Inconsolata-Regular.ttf",
+        "Lucida Console": "lucon.ttf",
+        "Calibri": "calibri.ttf",
+        "Georgia": "georgia.ttf",
     }
 
     if font_name in font_mappings:
@@ -76,15 +79,18 @@ class Renderer:
         # Load fonts with current sizes
         self._load_fonts()
 
-        # Calculate layout dimensions
-        self.left_margin = int(self.width * config.display.left_margin)
-        self.content_width = self.width - self.left_margin - 50  # 50px right margin
+        # Fixed 3-column grid
+        self.edge_padding = 50
         self.top_margin = 50
         self.bottom_margin = 50
-
-        # Calculate column widths for shortcut/description layout
-        self.shortcut_column_width = int(self.content_width * 0.35)
-        self.description_column_width = int(self.content_width * 0.65) - config.layout.column_gap
+        self.column_width = (self.width - 2 * self.edge_padding) // 3
+        self.column_positions = {
+            "left": self.edge_padding,
+            "middle": self.edge_padding + self.column_width,
+            "right": self.edge_padding + 2 * self.column_width,
+        }
+        self.active_columns = config.layout.active_columns
+        self.shortcut_column_width = int(self.column_width * 0.35)
 
     def _load_fonts(self):
         """Load fonts with current sizes."""
@@ -94,39 +100,25 @@ class Renderer:
 
     def render(self, content: ParsedContent) -> Image.Image:
         """Render parsed content to an image."""
-        # Create canvas
         bg_color = hex_to_rgb(self.theme.background)
         image = Image.new('RGB', (self.width, self.height), bg_color)
         draw = ImageDraw.Draw(image)
 
-        # Calculate line height
         line_height = int(self.shortcut_size * self.config.layout.line_height)
         header_height = int(self.header_size * self.config.layout.line_height)
-
-        # Available height for content
         available_height = self.height - self.top_margin - self.bottom_margin
 
-        # First pass: calculate total height needed
-        total_height = self._calculate_content_height(content, line_height, header_height)
+        # Always split across all active columns
+        active_positions = [self.column_positions[c] for c in self.active_columns]
+        num_columns = len(active_positions)
 
-        # Determine if we need multiple columns
-        num_columns = 1
-        if total_height > available_height:
-            num_columns = min(self.config.layout.overflow_columns, 3)
-
-        # Calculate column layout
-        column_width = self.content_width // num_columns
-
-        # Split content into columns if needed
         if num_columns > 1:
             columns = self._split_into_columns(content, num_columns, available_height, line_height, header_height)
         else:
             columns = [content.items]
 
-        # Render each column
         for col_idx, column_items in enumerate(columns):
-            col_x = self.left_margin + col_idx * column_width
-            self._render_column(draw, column_items, col_x, column_width, line_height, header_height)
+            self._render_column(draw, column_items, active_positions[col_idx], line_height, header_height)
 
         return image
 
@@ -194,26 +186,19 @@ class Renderer:
         draw: ImageDraw.Draw,
         items: list,
         x_start: int,
-        column_width: int,
         line_height: int,
         header_height: int,
     ):
         """Render a single column of items."""
         y = self.top_margin
-
-        # Recalculate shortcut/description widths for this column
-        shortcut_width = int(column_width * 0.35)
-        desc_x = x_start + shortcut_width + self.config.layout.column_gap
+        desc_x = x_start + self.shortcut_column_width + self.config.layout.column_gap
 
         for item in items:
             if isinstance(item, HeaderItem):
-                # Add section gap before header (except at top)
                 if y > self.top_margin:
                     y += self.config.layout.section_gap // 2
 
-                # Get header color based on level
                 color = self._get_header_color(item.level)
-
                 draw.text(
                     (x_start, y),
                     item.text,
@@ -224,7 +209,6 @@ class Renderer:
                 y += self.config.layout.section_gap // 2
 
             elif isinstance(item, ShortcutItem):
-                # Draw shortcut
                 shortcut_color = hex_to_rgb(self.theme.shortcut)
                 draw.text(
                     (x_start, y),
@@ -233,11 +217,12 @@ class Renderer:
                     fill=shortcut_color,
                 )
 
-                # Draw description
                 if item.description:
                     desc_color = hex_to_rgb(self.theme.description)
-                    # Truncate description if too long
-                    desc = self._truncate_text(item.description, column_width - shortcut_width - self.config.layout.column_gap)
+                    desc = self._truncate_text(
+                        item.description,
+                        self.column_width - self.shortcut_column_width - self.config.layout.column_gap,
+                    )
                     draw.text(
                         (desc_x, y),
                         desc,
@@ -315,7 +300,7 @@ def find_optimal_font_size(
                 total_height += line_height
 
         # Account for multiple columns
-        num_columns = config.layout.overflow_columns
+        num_columns = len(config.layout.active_columns)
         height_per_column = total_height / num_columns
 
         return height_per_column <= available_height

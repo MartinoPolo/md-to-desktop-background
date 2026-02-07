@@ -27,7 +27,6 @@ class OutputConfig:
 class DisplayConfig:
     resolution: str = "3200x2000"
     theme: str = "dark"
-    left_margin: float = 0.33
 
     @property
     def width(self) -> int:
@@ -43,7 +42,7 @@ class LayoutConfig:
     column_gap: int = 40
     line_height: float = 1.5
     section_gap: int = 30
-    overflow_columns: int = 2
+    active_columns: List[str] = field(default_factory=lambda: ["middle", "right"])
 
 
 @dataclass
@@ -63,13 +62,13 @@ class FilterConfig:
 
 @dataclass
 class ThemeColors:
-    background: str = "#1a1a2e"
+    background: str = "#000000"
     header_h2: str = "#e94560"
     header_h3: str = "#0f94b3"
     header_h4: str = "#44a363"
     header_h5: str = "#9c7b4a"
-    shortcut: str = "#ffffff"
-    description: str = "#b0b0b0"
+    shortcut: str = "#f8f8f2"
+    description: str = "#6272a4"
 
 
 @dataclass
