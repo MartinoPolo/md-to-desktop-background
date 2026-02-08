@@ -124,7 +124,7 @@ def main():
             set_wallpaper_style(config.display.wallpaper_style)
 
             print("Setting wallpaper...")
-            if set_wallpaper(output_path):
+            if set_wallpaper(output_path, style=config.display.wallpaper_style):
                 print("Wallpaper set successfully!")
             else:
                 print("Warning: Failed to set wallpaper")

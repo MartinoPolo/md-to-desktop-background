@@ -14,11 +14,12 @@ SPIF_UPDATEINIFILE = 0x01
 SPIF_SENDCHANGE = 0x02
 
 
-def set_wallpaper(image_path: Union[str, Path]) -> bool:
+def set_wallpaper(image_path: Union[str, Path], style: str = "fill") -> bool:
     """Set the Windows desktop wallpaper.
 
     Args:
         image_path: Path to the image file (must be absolute)
+        style: Display style ("fill", "fit", "stretch", "tile", "center", "span")
 
     Returns:
         True if successful, False otherwise
@@ -40,16 +41,17 @@ def set_wallpaper(image_path: Union[str, Path]) -> bool:
     )
 
     if result:
-        _integrate_with_theme(image_path)
+        _integrate_with_theme(image_path, style)
 
     return bool(result)
 
 
-def _integrate_with_theme(image_path: Path) -> None:
+def _integrate_with_theme(image_path: Path, wallpaper_style: str = "fill") -> None:
     """Update Windows theme file and cache so wallpaper persists across theme reapplication.
 
     Without this, Windows 11 reverts to the theme's wallpaper (often blank/black)
-    on login, sync, or periodic theme refresh.
+    on login, sync, or periodic theme refresh. Also writes WallpaperStyle and
+    TileWallpaper to prevent style reversion (e.g. fit -> fill).
     """
     import winreg
 
@@ -80,8 +82,29 @@ def _integrate_with_theme(image_path: Path) -> None:
     absolute_path = str(image_path.resolve())
     lines = theme_path.read_text(encoding="utf-8", errors="replace").splitlines()
 
+    # Registry-style values (WallpaperStyle + TileWallpaper)
+    registry_style_values = {
+        "fill": ("10", "0"),
+        "fit": ("6", "0"),
+        "stretch": ("2", "0"),
+        "tile": ("0", "1"),
+        "center": ("0", "0"),
+        "span": ("22", "0"),
+    }
+    wp_style, tile_wp = registry_style_values.get(wallpaper_style, ("10", "0"))
+
+    # DESKTOP_WALLPAPER_POSITION enum used by PicturePosition in Win11 theme files
+    picture_position_values = {
+        "center": "0", "tile": "1", "stretch": "2",
+        "fit": "3", "fill": "4", "span": "5",
+    }
+    picture_pos = picture_position_values.get(wallpaper_style, "4")
+
     in_desktop_section = False
     wallpaper_replaced = False
+    style_replaced = False
+    tile_replaced = False
+    picture_pos_replaced = False
     new_lines = []
 
     for line in lines:
@@ -90,17 +113,43 @@ def _integrate_with_theme(image_path: Path) -> None:
         if stripped.startswith("["):
             in_desktop_section = stripped.lower() == r"[control panel\desktop]"
 
-        if (
-            in_desktop_section
-            and not wallpaper_replaced
-            and stripped.lower().startswith("wallpaper=")
-            and not stripped.lower().startswith("wallpaper1")
-            and not stripped.lower().startswith("wallpaper2")
-        ):
-            line = f"Wallpaper={absolute_path}"
-            wallpaper_replaced = True
+        if in_desktop_section:
+            if (
+                not wallpaper_replaced
+                and stripped.lower().startswith("wallpaper=")
+                and not stripped.lower().startswith("wallpaper1")
+                and not stripped.lower().startswith("wallpaper2")
+            ):
+                line = f"Wallpaper={absolute_path}"
+                wallpaper_replaced = True
+            elif stripped.lower().startswith("wallpaperstyle="):
+                line = f"WallpaperStyle={wp_style}"
+                style_replaced = True
+            elif stripped.lower().startswith("tilewallpaper="):
+                line = f"TileWallpaper={tile_wp}"
+                tile_replaced = True
+            elif stripped.lower().startswith("pictureposition="):
+                line = f"PicturePosition={picture_pos}"
+                picture_pos_replaced = True
 
         new_lines.append(line)
+
+    # If entries were missing, insert them after Wallpaper= line
+    if wallpaper_replaced:
+        missing = []
+        if not style_replaced:
+            missing.append(f"WallpaperStyle={wp_style}")
+        if not tile_replaced:
+            missing.append(f"TileWallpaper={tile_wp}")
+        if not picture_pos_replaced:
+            missing.append(f"PicturePosition={picture_pos}")
+        if missing:
+            final_lines = []
+            for line in new_lines:
+                final_lines.append(line)
+                if line.startswith(f"Wallpaper={absolute_path}"):
+                    final_lines.extend(missing)
+            new_lines = final_lines
 
     try:
         theme_path.write_text("\r\n".join(new_lines), encoding="utf-8")
